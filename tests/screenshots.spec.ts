@@ -30,6 +30,8 @@ test.describe('CheckoutIQ Visual Evidence Capture', () => {
     // 5. Quality Lab View
     await page.getByTestId('nav-quality-lab').click();
     await expect(page.getByText('Quality Lab & Automation Reports')).toBeVisible();
+    await expect(page.getByText('Actual Execution Data Loaded')).toBeVisible();
+    await expect(page.getByText('verified', { exact: true })).toBeVisible();
     await page.screenshot({ path: 'evidence/screenshots/05_quality_lab_dashboard.png', fullPage: true });
   });
 });

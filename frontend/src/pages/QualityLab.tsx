@@ -174,14 +174,33 @@ export const QualityLab: React.FC<QualityLabProps> = ({ onSwitchToCheckout }) =>
     },
   ];
 
+  // Recursive helper to extract all specs from nested Playwright suite structures
+  const extractAllSpecs = (node: any): any[] => {
+    if (!node) return [];
+    const list: any[] = [];
+    if (Array.isArray(node.specs)) {
+      list.push(...node.specs);
+    }
+    if (Array.isArray(node.suites)) {
+      for (const sub of node.suites) {
+        list.push(...extractAllSpecs(sub));
+      }
+    }
+    return list;
+  };
+
   const loadActualResults = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/evidence/test-reports/test-results.json', { cache: 'no-store' });
+      const res = await fetch(`/evidence/test-reports/test-results.json?t=${Date.now()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         if (data && data.suites) {
-          const specs = data.suites.flatMap((s: any) => s.specs || []);
+          const specs: any[] = [];
+          for (const s of data.suites) {
+            specs.push(...extractAllSpecs(s));
+          }
+
           let passed = 0;
           let failed = 0;
           let skipped = 0;
@@ -190,13 +209,14 @@ export const QualityLab: React.FC<QualityLabProps> = ({ onSwitchToCheckout }) =>
           const updated = defaultDefinitions.map((tc) => {
             const matchedSpec = specs.find(
               (s: any) =>
+                s.title.toLowerCase().startsWith(tc.id.toLowerCase() + ':') ||
                 s.title.toLowerCase().includes(tc.id.toLowerCase()) ||
                 s.title.toLowerCase().includes(tc.name.toLowerCase().substring(0, 15))
             );
             if (matchedSpec && matchedSpec.tests && matchedSpec.tests.length > 0) {
               const testRun = matchedSpec.tests[0];
               const result = testRun.results && testRun.results[0];
-              const isPass = result && result.status === 'passed';
+              const isPass = result && (result.status === 'passed' || testRun.status === 'expected');
               const isSkip = result && result.status === 'skipped';
               const duration = result ? result.duration : 0;
               totalDuration += duration;
@@ -212,7 +232,7 @@ export const QualityLab: React.FC<QualityLabProps> = ({ onSwitchToCheckout }) =>
                   ? `Completed in ${duration}ms (0 errors)`
                   : isSkip
                   ? 'Skipped'
-                  : `Failed: ${result?.error?.message || 'Assertion error'}`,
+                  : `Failed: ${result?.errors?.[0]?.message || result?.error?.message || 'Assertion error'}`,
               };
             }
             return tc;
@@ -220,14 +240,18 @@ export const QualityLab: React.FC<QualityLabProps> = ({ onSwitchToCheckout }) =>
 
           setTestRecords(updated);
           setHasReportData(true);
+          const suiteDuration = data.stats?.duration ? Math.round(data.stats.duration) : totalDuration;
           setExecutionSummary({
             total: updated.length,
             passed,
             failed,
             skipped,
-            durationMs: totalDuration,
+            durationMs: suiteDuration,
           });
-          setLastExecuted(new Date().toLocaleTimeString());
+          const execTime = data.stats?.startTime
+            ? new Date(data.stats.startTime).toLocaleTimeString()
+            : new Date().toLocaleTimeString();
+          setLastExecuted(execTime);
           setIsLoading(false);
           return;
         }
